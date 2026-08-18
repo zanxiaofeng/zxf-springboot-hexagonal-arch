@@ -21,7 +21,22 @@ paths:
 - AssertJ
 - Testcontainers（integration/e2e 用真实 MySQL 容器；H2 仅作无法使用容器时的降级选项）
 - Spring Cloud Contract（与 Spring Boot 4 兼容版本，属 Spring Cloud 2025.1.x release train；具体版本号见 [Supported Versions](https://github.com/spring-cloud/spring-cloud-release/wiki/Supported-Versions)）
-- WireMock 3.x
+- WireMock 3.x（`org.wiremock:wiremock-standalone`；Java 包名仍为 `com.github.tomakehurst.wiremock`）
+
+**SB4 测试依赖与注解包名（实测 4.1.0，与 SB3 差异）：**
+
+| 事项 | SB4 现状 |
+|------|---------|
+| Testcontainers 版本 | **BOM 不再管理**，需显式声明（实测可用 1.21.4） |
+| `@DataJpaTest` | 拆分至 `spring-boot-starter-data-jpa-test`；包名 `org.springframework.boot.data.jpa.test.autoconfigure` |
+| `@AutoConfigureMockMvc` | 包名 `org.springframework.boot.webmvc.test.autoconfigure`（随 starter-webmvc-test 提供） |
+| `@AutoConfigureTestDatabase` | 包名 `org.springframework.boot.jdbc.test.autoconfigure`（随 data-jpa-test 传递） |
+| `@ServiceConnection` | 需依赖 `spring-boot-testcontainers`；包名不变 |
+
+## Infrastructure（SB4 实测补充）
+
+- **Flyway 10+ 数据库方言拆分**：MySQL 支持需额外依赖 `org.flywaydb:flyway-mysql`（版本 BOM 管理），否则启动报 `Unsupported Database: MySQL 8.0`
+- **RestClient 请求工厂**：默认 JDK `HttpURLConnection` 的 keep-alive 连接池会复用被服务端关闭的空闲连接（报 `EOF reached while reading`）；引入 `org.apache.httpcomponents.client5:httpclient5` 后 Spring Boot 自动改用其连接池（带 stale 校验）
 
 ## Infrastructure
 

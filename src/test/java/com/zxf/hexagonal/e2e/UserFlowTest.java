@@ -1,5 +1,6 @@
 package com.zxf.hexagonal.e2e;
 
+import com.jayway.jsonpath.JsonPath;
 import com.zxf.hexagonal.e2e.support.BaseE2ETest;
 import com.zxf.hexagonal.support.mocks.NotificationMockFactory;
 import org.junit.jupiter.api.Test;
@@ -7,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -27,12 +29,12 @@ class UserFlowTest extends BaseE2ETest {
         NotificationMockFactory.mockNotificationSuccess(WIRE_MOCK);
         long countBefore = databaseVerifier.countUsers();
 
-        // When
+        // When（AUTO_INCREMENT 跨测试不复位，Location 用正则断言）
         MvcResult result = mockMvc.perform(post("/api/v1/users")
                         .contentType("application/json")
                         .content("{\"name\":\"Bob\",\"email\":\"bob@example.com\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/v1/users/2"))
+                .andExpect(header().string("Location", matchesPattern("/api/v1/users/\\d+")))
                 .andExpect(jsonPath("$.code").value("000000"))
                 .andExpect(jsonPath("$.data.name").value("Bob"))
                 .andExpect(jsonPath("$.data.email").value("bob@example.com"))
@@ -146,21 +148,19 @@ class UserFlowTest extends BaseE2ETest {
 
     @Test
     void testDeleteUser() throws Exception {
-        // 新建再删除，验证完整生命周期
-        mockMvc.perform(post("/api/v1/users")
-                        .contentType("application/json")
-                        .content("{\"name\":\"Carol\",\"email\":\"carol@example.com\"}"))
-                .andExpect(status().isCreated())
-                .andReturn();
+        // 新建再删除，验证完整生命周期（id 从响应解析——AUTO_INCREMENT 跨测试不复位）
+        String created = httpPostAndAssert("/api/v1/users",
+                "{\"name\":\"Carol\",\"email\":\"carol@example.com\"}", HttpStatus.CREATED);
+        Long id = ((Number) JsonPath.read(created, "$.data.id")).longValue();
 
-        httpDeleteAndAssert("/api/v1/users/2", HttpStatus.NO_CONTENT);
+        httpDeleteAndAssert("/api/v1/users/" + id, HttpStatus.NO_CONTENT);
 
         // 已删除不可见；软删除标记已写入 DB
-        httpGetAndAssert("/api/v1/users/2", HttpStatus.NOT_FOUND);
-        assertThat(databaseVerifier.findDeletedAtById(2L)).isNotNull();
+        httpGetAndAssert("/api/v1/users/" + id, HttpStatus.NOT_FOUND);
+        assertThat(databaseVerifier.findDeletedAtById(id)).isNotNull();
 
         // 重复删除 → 404
-        httpDeleteAndAssert("/api/v1/users/2", HttpStatus.NOT_FOUND);
+        httpDeleteAndAssert("/api/v1/users/" + id, HttpStatus.NOT_FOUND);
     }
 
     @Test

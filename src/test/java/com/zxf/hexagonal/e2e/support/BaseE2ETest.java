@@ -52,7 +52,7 @@ public abstract class BaseE2ETest {
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("app.downstream.notification.base-url",
-                () -> "http://localhost:" + WIRE_MOCK.port());
+                () -> "http://127.0.0.1:" + WIRE_MOCK.port());   // 用 127.0.0.1 避免 localhost 解析为 IPv6 导致连接被拒
     }
 
     @Autowired  // 测试基类允许字段注入；生产代码必须构造器注入

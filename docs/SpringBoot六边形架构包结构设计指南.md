@@ -991,6 +991,7 @@ myapp/
         <java.version>21</java.version>
         <!-- 示例值，以项目实际采用的 Spring Boot 4.1.x 补丁版本为准 -->
         <spring-boot.version>4.1.5</spring-boot.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -1186,10 +1187,15 @@ myapp/
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
-        <!-- 数据库迁移 -->
+        <!-- 数据库迁移（Flyway 10+ 方言拆分：MySQL 支持需额外引入 flyway-mysql） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Lombok -->
@@ -1208,14 +1214,17 @@ myapp/
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mysql</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- Testcontainers 版本由 spring-boot-dependencies BOM 管理 -->
+        <!-- SB4 起 Spring Boot BOM 不再管理 Testcontainers 版本，需显式声明（如 1.21.4）；
+             @DataJpaTest 拆分至 spring-boot-starter-data-jpa-test，@ServiceConnection 需 spring-boot-testcontainers -->
     </dependencies>
 </project>
 ```

@@ -31,6 +31,7 @@ infrastructure/adapter/out/persistence/
 
 - All DDL via Flyway migration
 - Naming: `V{version}__{description}.sql`
+- **Flyway 10+ 方言拆分**：MySQL 支持需额外依赖 `org.flywaydb:flyway-mysql`（SB4 的 flyway starter 只带 flyway-core，缺失时启动报 `Unsupported Database: MySQL 8.0`）
 - **Never modify merged migrations** — add corrective migrations instead
 - Test data via `@Sql` scripts in `src/test/resources/sql-data/` (cleanup + init + cases)
 - 集成/e2e 测试用 Testcontainers 起真实 MySQL，Flyway 自动执行迁移，不再维护 H2 方言分支；MySQL 专有语法无需拆分 `db/migration/mysql/`

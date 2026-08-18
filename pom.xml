@@ -60,6 +60,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
+        <!-- RestClient 连接池工厂：JDK HttpURLConnection 的 keep-alive 连接池会复用已被
+             服务端关闭的空闲连接（EOF reached while reading），Apache HttpClient 5 带 stale 校验 -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
 
         <!-- ── 参数校验 ── -->
         <dependency>

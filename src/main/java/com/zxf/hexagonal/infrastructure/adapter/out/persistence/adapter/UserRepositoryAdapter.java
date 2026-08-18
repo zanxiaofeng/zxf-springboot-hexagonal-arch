@@ -49,7 +49,8 @@ public class UserRepositoryAdapter implements UserRepository {
     @Override
     public User save(User user) {
         try {
-            UserJpaEntity saved = jpaRepository.save(UserPersistenceMapper.toEntity(user));
+            // saveAndFlush：立即执行 INSERT/UPDATE，确保乐观锁 version 自增在返回值中可见
+            UserJpaEntity saved = jpaRepository.saveAndFlush(UserPersistenceMapper.toEntity(user));
             return UserPersistenceMapper.toDomain(saved);
         } catch (OptimisticLockingFailureException ex) {
             // JPA flush 阶段的乐观锁冲突兜底（Service 层版本比对之外的二道防线）

@@ -27,8 +27,8 @@ public class NotificationGatewayAdapter implements NotificationGateway {
                     .toBodilessEntity();
             return true;
         } catch (ResourceAccessException ex) {
-            // 连接失败/超时：瞬态错误，降级不阻塞主流程
-            log.warn("Notification service unreachable, degrade. userId: {}", userId);
+            // 连接失败/超时：瞬态错误，降级不阻塞主流程（带 cause 便于定位连接层问题）
+            log.warn("Notification service unreachable, degrade. userId: {}", userId, ex);
             return false;
         } catch (Exception ex) {
             log.error("Failed to send welcome notification, userId: {}", userId, ex);

@@ -31,8 +31,9 @@ public interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
 
     /**
      * 软删除：仅更新未删除行（@SQLRestriction 不影响 @Modifying 更新），返回影响行数。
+     * clearAutomatically：清一级缓存，避免随后的 findById 命中更新前的旧实体。
      */
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE UserJpaEntity u SET u.deletedAt = :deletedAt WHERE u.id = :id AND u.deletedAt IS NULL")
     int softDelete(@Param("id") Long id, @Param("deletedAt") OffsetDateTime deletedAt);
 }
