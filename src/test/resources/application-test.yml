@@ -1,0 +1,12 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# datasource 由 Testcontainers @ServiceConnection 注入（见 BaseE2ETest / UserRepositoryAdapterTest）
+# 通知下游 base-url 由 WireMock 动态端口注入（见 BaseE2ETest @DynamicPropertySource）
