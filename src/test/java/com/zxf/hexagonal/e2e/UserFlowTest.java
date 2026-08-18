@@ -1,12 +1,11 @@
 package com.zxf.hexagonal.e2e;
 
 import com.zxf.hexagonal.e2e.support.BaseE2ETest;
+import com.zxf.hexagonal.support.mocks.NotificationMockFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static com.zxf.hexagonal.support.mocks.NotificationMockFactory.mockNotificationSuccess;
-import static com.zxf.hexagonal.support.mocks.NotificationMockFactory.verifyNotificationCalled;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -25,7 +24,7 @@ class UserFlowTest extends BaseE2ETest {
     @Test
     void testCreateUser() throws Exception {
         // Given
-        mockNotificationSuccess(WIRE_MOCK);
+        NotificationMockFactory.mockNotificationSuccess(WIRE_MOCK);
         long countBefore = databaseVerifier.countUsers();
 
         // When
@@ -43,7 +42,7 @@ class UserFlowTest extends BaseE2ETest {
 
         // Then — DB 状态 + 下游调用（afterCommit 后同步触发）
         assertThat(databaseVerifier.countUsers()).isEqualTo(countBefore + 1);
-        verifyNotificationCalled(WIRE_MOCK, 1);
+        NotificationMockFactory.verifyNotificationCalled(WIRE_MOCK, 1);
     }
 
     @Test
@@ -56,7 +55,7 @@ class UserFlowTest extends BaseE2ETest {
                 .andExpect(jsonPath("$.errors").isArray());
 
         // 校验失败不触发下游
-        verifyNotificationCalled(WIRE_MOCK, 0);
+        NotificationMockFactory.verifyNotificationCalled(WIRE_MOCK, 0);
     }
 
     @Test
@@ -67,7 +66,7 @@ class UserFlowTest extends BaseE2ETest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_EXISTS"));
 
-        verifyNotificationCalled(WIRE_MOCK, 0);
+        NotificationMockFactory.verifyNotificationCalled(WIRE_MOCK, 0);
     }
 
     // ── UC-002 查询用户 ──

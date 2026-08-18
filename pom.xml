@@ -48,6 +48,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
+        <!-- Flyway 10+ 将数据库方言拆分为独立模块：MySQL 支持需显式引入（版本由 BOM 管理） -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- ── 出站适配器：外部 HTTP 调用（SB4 需专用 starter）── -->
         <dependency>
