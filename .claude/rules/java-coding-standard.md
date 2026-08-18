@@ -125,7 +125,7 @@ if (user.isActive()) process(user);
  *
  * @param request the creation request containing required fields
  * @return the created entity response with generated ID
- * @throws BusinessException if entity with same name already exists
+ * @throws {Entity}AlreadyExistsException if entity with same name already exists
  */
 EntityResponse create(CreateRequest request);
 ```
@@ -255,7 +255,7 @@ switch (d) {
 // 链式操作
 return repository.findById(id)
     .map(mapper::toResponse)
-    .orElseThrow(() -> new BusinessException(ErrorCode.ENTITY_NOT_FOUND, id));
+    .orElseThrow(() -> new {Entity}NotFoundException(id));
 
 // 条件执行
 optional.ifPresent(this::process);
@@ -424,7 +424,7 @@ public class OrderService {
     // 默认非空返回 —— 调用方无需 null 检查
     public Order findById(Long id) {
         return repository.findById(id)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, id));
+            .orElseThrow(() -> new OrderNotFoundException(id));
     }
 
     // Optional 返回 —— 调用方链式处理
@@ -645,12 +645,12 @@ User created = restClient.post()
 ```java
 // GOOD: 传递 cause
 catch (IOException ex) {
-    throw new BusinessException(ErrorCode.INTERNAL_ERROR, ex);
+    throw new FileProcessingException(fileName, ex);
 }
 
 // BAD: 吞掉原因
 catch (IOException ex) {
-    throw new BusinessException(ErrorCode.INTERNAL_ERROR);  // 丢失 ex！
+    throw new FileProcessingException(fileName);  // 丢失 ex！
 }
 
 // BAD: 空 catch 块

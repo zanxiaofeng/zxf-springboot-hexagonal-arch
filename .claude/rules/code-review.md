@@ -11,11 +11,11 @@ paths:
 ## Checklist
 
 ### 架构与分层（→ `architecture.md`）
-- [ ] 四层分离（Domain → Application → Infrastructure → Interfaces）是否维护？
-- [ ] Domain 层是否无 Spring/framework 依赖？
-- [ ] Repository 是否 domain 层接口、infrastructure 层实现？
-- [ ] 下游 Client 是否 domain 层接口、infrastructure 层实现？
-- [ ] Service 是否直接注入 Domain Repository 接口（而非 JpaRepository）？
+- [ ] 六边形三层（Domain → Application → Infrastructure）依赖向内是否维护？
+- [ ] Domain 层是否零框架依赖（Spring/JPA/Kafka/Lombok 均无）？
+- [ ] Repository 端口是否只在 application/port/out 定义一份、adapter.out 实现？
+- [ ] 下游 Gateway 是否 application/port/out 接口、adapter/out/external 实现？
+- [ ] Service 是否只注入 port/out 接口（而非适配器实现类/JpaRepository）？
 
 ### Java 编码规范（→ `java-coding-standard.md`）
 - [ ] 所有 `public` / `protected` 类和方法是否有 JavaDoc？
@@ -53,7 +53,7 @@ paths:
 - [ ] `@ConfigurationProperties` 类是否加了 `@Validated`？
 
 ### 异常处理（→ `exception-handling.md`）
-- [ ] 业务错误是否全部通过 `BusinessException` + `ErrorCode` 表达？
+- [ ] 业务错误是否全部通过类型化领域异常（`domain/exception/` + `CODE` 常量）表达？
 - [ ] 新增错误是否只新增 `ErrorCode` 枚举值（而非新异常类）？
 - [ ] Controller 是否零 try-catch？
 - [ ] 兜底 500 是否固定文案、不回显 `ex.getMessage()`？
@@ -68,7 +68,7 @@ paths:
 - [ ] 已合并的 migration 是否未被修改？
 
 ### 下游集成（→ `downstream-conventions.md`）
-- [ ] 下游 Client 接口是否在 domain 层（如调用外部服务）？
+- [ ] 下游 Gateway 接口是否在 application/port/out（如调用外部服务）？
 - [ ] API 测试中是否有 WireMock MockFactory/Verifier？
 
 ### 日志（→ `logging.md`）
@@ -77,7 +77,7 @@ paths:
 - [ ] 密码、token、PII 是否脱敏后才记录？
 
 ### 测试（→ `test-conventions.md` / `integration-test-guide.md` / `contract-test.md`）
-- [ ] 测试命名：`*ApiTests` for API tests, `*ContractTest` for contract？
+- [ ] 测试命名：`*FlowTest` for e2e, `*Test` for unit, `*ContractTest` for contract？
 - [ ] Contract Test 是否覆盖新端点？
 - [ ] 单元测试是否无 Spring Context（纯 Mockito）？
 - [ ] 测试数据是否确定性（无 `UUID.randomUUID()` / `System.currentTimeMillis()`）？
@@ -86,10 +86,10 @@ paths:
 ***
 
 ## Architecture Review
-- [ ] Four-layer separation maintained (Domain -> Application -> Infrastructure -> Interfaces)
+- [ ] Hexagonal three-layer separation maintained (Domain -> Application -> Infrastructure), dependencies pointing inward
 - [ ] Domain layer has no Spring/framework dependencies
-- [ ] Repository is interface in domain, implementation in infrastructure
-- [ ] Downstream client is interface in domain, implementation in infrastructure
+- [ ] Repository port defined only in application/port/out, implemented by adapter.out
+- [ ] Downstream Gateway is interface in application/port/out, implemented in adapter/out/external
 
 ***
 

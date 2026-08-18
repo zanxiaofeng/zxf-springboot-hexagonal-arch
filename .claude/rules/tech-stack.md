@@ -13,19 +13,19 @@ paths:
 - Spring Framework 7.x
 - Jakarta EE 11（Servlet 6.1 baseline）
 - Maven 3.9+
-- MySQL 8.0 (production)
-- H2 (testing)
+- MySQL 8.0 (production & integration/e2e testing via Testcontainers)
 
 ## Testing
 
 - JUnit 5
 - AssertJ
+- Testcontainers（integration/e2e 用真实 MySQL 容器；H2 仅作无法使用容器时的降级选项）
 - Spring Cloud Contract（与 Spring Boot 4 兼容版本，属 Spring Cloud 2025.1.x release train；具体版本号见 [Supported Versions](https://github.com/spring-cloud/spring-cloud-release/wiki/Supported-Versions)）
 - WireMock 3.x
 
 ## Infrastructure
 
-- Lombok（boilerplate reduction：`@Data`、`@Builder`、`@Slf4j`、`@RequiredArgsConstructor`）
+- Lombok（boilerplate reduction：`@Data`、`@Builder`、`@Slf4j`、`@RequiredArgsConstructor`；**仅 application 与 infrastructure 层使用，domain 层零依赖**）
 - Apache Commons Lang 3（`StringUtils`、`ObjectUtils`）
 - Flyway（SB4 需专用 starter `spring-boot-starter-flyway`；版本由 Spring Boot BOM 管理）
 - Spring Data JPA（Hibernate 7）
@@ -34,6 +34,7 @@ paths:
 - Spring Web MVC（`spring-boot-starter-webmvc`）
 - Spring Security（CSRF configuration per project requirements）
 - RestClient / RestTemplate（下游 HTTP 客户端，需 `spring-boot-starter-restclient`；RestClient 为新模块首选，RestTemplate 处理维护模式）
+- spring-kafka（按需；**Spring Boot 无 Kafka starter**，直接依赖 `org.springframework.kafka:spring-kafka`，由 Boot 自动配置）
 
 ## Starter 模块化（Spring Boot 4 关键变化）
 
@@ -57,3 +58,7 @@ Spring Boot 4 采用模块化设计：每个技术有专用 starter，且每个 
 
 - WireMock 3.x（test stubbing for downstream services）
 - RestClient with 3s connect / 5s read timeout（详见 `downstream-conventions.md`）
+
+## 多模块说明（进阶）
+
+当前为单模块结构；多模块拆分（domain / application / infrastructure / bootstrap）见 `docs/SpringBoot六边形架构包结构设计指南.md` 第十章。注意：自建 parent + import BOM 时，**BOM 只管理依赖版本不管理插件版本**，`spring-boot-maven-plugin` 必须在父 POM `<pluginManagement>` 中显式声明版本。

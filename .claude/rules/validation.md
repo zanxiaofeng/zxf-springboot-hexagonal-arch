@@ -78,7 +78,7 @@ public record McpProperties(
 | 层 | 验证方式 | 验证内容 |
 |----|---------|---------|
 | Controller | `@Valid` / `@Validated` | 格式验证（非空、长度、格式、正则） |
-| Service | `@Validated` + Bean Validation；依赖外部状态的语义校验用 `if + BusinessException` | 业务验证（存在性、状态、权限） |
+| Service | `@Validated` + Bean Validation；依赖外部状态的语义校验用 `if + 领域异常` | 业务验证（存在性、状态、权限） |
 | Entity | `@PrePersist` / `@PreUpdate` | 不变式（数据一致性约束） |
 | Configuration | `@ConfigurationProperties` + `@Validated` | 配置属性约束（必填、范围、格式），启动时 Fail Fast |
 
@@ -91,7 +91,7 @@ public record McpProperties(
 | `@ConfigurationProperties` 类/record | `@Validated` + 字段注解 | Spring 绑定后自动校验，启动 Fail Fast |
 | DTO / Request / Response record | 字段 Bean Validation 注解 | Controller `@Valid` 自动触发 |
 | Service 方法参数（Bean 类型） | `@Validated`（类级）+ `@Valid`（参数） | 框架 AOP 代理自动校验 |
-| Service 用例中的语义校验（唯一性、存在性、状态前置条件 — 需查库或下游） | 用例代码 `if + BusinessException`（见 `exception-handling.md` §4.2） | 语义校验依赖外部状态，注解约束必须自包含、无副作用；业务拒绝抛 `BusinessException`（4xx），区别于编程契约违反（`IllegalArgumentException` → 500） |
+| Service 用例中的语义校验（唯一性、存在性、状态前置条件 — 需查库或下游） | 用例代码 `if + 领域异常`（见 `exception-handling.md` §4.2） | 语义校验依赖外部状态，注解约束必须自包含、无副作用；业务拒绝抛类型化领域异常（4xx），区别于编程契约违反（`IllegalArgumentException` → 500） |
 | Domain Entity / Value Object | `Assert` / `Objects.requireNonNull` | 非 Spring 管理，Bean Validation 不触发 |
 | 内部不变式 / 后置条件 | `assert` 或 `Assert.state` | 代码内部逻辑假设 |
 
@@ -606,12 +606,12 @@ public void createUser(@Valid UserCreateDTO dto) { ... }
 
 > 当场景不受 Spring 管理（Domain Entity、Value Object、内部逻辑）时，使用命令式校验。以下规范适用于这些场景。
 
-> **边界说明 — Service 层的语义校验：** Service 用例中还有一类显式代码校验——依赖外部状态的语义校验（唯一性、存在性、状态前置条件），它不适用上述「是否被 Spring 管理」的判断标准，产物是 `BusinessException`（业务拒绝 → 4xx），而非本节的契约异常（`IllegalArgumentException` → 500 兜底）。写法见 `exception-handling.md` §4.2：
+> **边界说明 — Service 层的语义校验：** Service 用例中还有一类显式代码校验——依赖外部状态的语义校验（唯一性、存在性、状态前置条件），它不适用上述「是否被 Spring 管理」的判断标准，产物是类型化领域异常（业务拒绝 → 4xx），而非本节的契约异常（`IllegalArgumentException` → 500 兜底）。写法见 `exception-handling.md` §4.2：
 >
 > ```java
 > // 语义校验：需查库才能判断，写在该业务用例的 Service 方法中
 > if ({entity}Repository.existsByName(request.name())) {
->     throw new BusinessException(ErrorCode.{ENTITY}_ALREADY_EXISTS, request.name());
+>     throw new {Entity}AlreadyExistsException(request.name());
 > }
 > ```
 >

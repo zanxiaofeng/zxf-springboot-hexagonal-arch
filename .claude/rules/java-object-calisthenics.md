@@ -122,7 +122,7 @@ public BigDecimal price(Order order) {
 | 简单字符串/数值、仅在单个 DTO 中使用 | 不强制 |
 | kata 练习中 | 全部包装（健身目标） |
 
-**Java 21 落地：** 非持久化 VO 首选 `record`（语言级不可变 + 模式匹配）；JPA 持久化 VO 用 `@Embeddable`（示例见 architecture.md §3.2 的 `Email`）。
+**Java 21 落地：** 领域 VO 一律纯 `record`（语言级不可变 + 模式匹配，如 `Email`，见 architecture.md §3.2）；持久化组合值如需 `@Embeddable`，落在 JpaEntity 侧（infrastructure 层，见 `db-conventions.md`），领域层不出现 JPA 注解。
 
 ```java
 // record 作轻量 VO：校验内聚在 compact constructor
@@ -223,7 +223,7 @@ String city = order.shippingCity();
 
 **生产落地：** 不作硬性拦截，作为**设计信号**：
 
-- 行为类（Service、Domain Service、helper）依赖超过 ~5 个 → 审视是否多个职责挤在一个类里，按用例拆分或聚合协作者（把总是同时出现的几个依赖提炼为一个领域服务）
+- 行为类（Service、helper）依赖超过 ~5 个 → 审视是否多个职责挤在一个类里，按用例拆分或聚合协作者（把总是同时出现的几个依赖提炼为一个值对象或应用层协作 Service——本项目领域层不含服务，见 architecture.md §3.5）
 - 出现「字段分组」现象（一半方法只用一半字段）→ 按分组拆类
 
 **例外：** JPA Entity（字段即表列映射）、DTO/record（数据载体）、`@ConfigurationProperties`（配置绑定）天然多字段，不适用本规则。

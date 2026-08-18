@@ -18,7 +18,7 @@ paths:
   - "**/domain/**/*.java"
   - "**/application/**/*.java"
   - "**/infrastructure/**/*.java"
-  - "**/interfaces/**/*.java"
+  - "**/infrastructure/adapter/in/**/*.java"
 ---
 
 # Refactor Module
