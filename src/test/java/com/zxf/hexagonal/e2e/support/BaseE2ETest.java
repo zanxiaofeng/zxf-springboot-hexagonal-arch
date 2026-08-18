@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import com.github.tomakehurst.wiremock.WireMockServer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import java.nio.charset.StandardCharsets;
 
@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 public abstract class BaseE2ETest {
 
-    protected static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0");
+    protected static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.0");
     protected static final WireMockServer WIRE_MOCK =
             new WireMockServer(new com.github.tomakehurst.wiremock.core.WireMockConfiguration()
                     .dynamicPort());

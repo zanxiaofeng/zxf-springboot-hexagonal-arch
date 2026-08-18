@@ -29,7 +29,7 @@ mvn spring-boot:run   # 本地运行（需 localhost:3306 MySQL，库名 hexagon
 | 需求 | 状态 |
 |------|------|
 | REQ-001 用户管理（walking skeleton） | ✅ 完成（37 测试全绿） |
-| REQ-002 订单管理 | 计划 |
+| REQ-002 订单管理 | 计划（定价领域策略已先行，见 `docs/design/domain-model.md`） |
 | REQ-003 认证授权 | 计划 |
 | REQ-004 API 契约测试接入 | 计划 |
 

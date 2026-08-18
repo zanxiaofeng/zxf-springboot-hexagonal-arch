@@ -63,6 +63,8 @@ com.example.{project}
 │   │   ├── {Entity}.java
 │   │   ├── {Entity}Id.java                  # 标识符值对象（可选）
 │   │   └── …Vo.java                         # 带校验/计算规则的值对象
+│   ├── service/                             # 领域策略/领域服务（按需，零框架依赖）
+│   │   └── {BusinessConcept}Policy.java     # 跨聚合事实的规则计算，不访问端口
 │   ├── event/
 │   │   ├── DomainEvent.java                 # 事件标记接口
 │   │   └── {Entity}CreatedEvent.java        # record，implements DomainEvent
@@ -140,7 +142,7 @@ com.example.{project}
 ### 3.2 值对象（model）
 
 - 非持久化 VO 首选 `record`，compact constructor 中做格式/业务校验
-- **纯计算逻辑内聚到值对象**（如 `PricingPolicy.calculateFinalPrice()`），而不是放「领域服务」
+- **纯计算逻辑内聚到值对象**（如 `PricingPolicy.calculateFinalPrice()`）；无自然宿主的规则计算放领域策略（`domain/service/`，见 §3.5）
 - 判断标准：同一段校验/计算出现在两处以上，就应提取为 VO
 
 > VO 完整示例与 OO 设计约束见 `java-object-calisthenics.md`。
@@ -158,13 +160,24 @@ com.example.{project}
 
 > 异常体系完整定义、抛出/捕获规范、全局处理见 `exception-handling.md`。
 
-### 3.5 领域层禁止「服务」
+### 3.5 应用服务与领域服务的边界
 
-领域层不包含 service 包：
+业务规则按「自然宿主」归属，编排与规则分离：
 
-- **跨实体的编排逻辑** → `application/service/`
-- **纯计算逻辑** → 内聚到值对象
-- 单个聚合内部的行为 → 实体自身方法
+| 归属 | 判断标准 | 位置 |
+|------|---------|------|
+| 实体方法 / 值对象 | 规则的自然宿主（操作自身状态/自身数据） | `domain/model/` |
+| 领域策略/领域服务（按需） | 纯规则计算，但不自然归属单一实体/VO（输入是跨聚合事实，如按历史订单数定阶梯折扣） | `domain/service/` |
+| 应用服务 | 编排：查事实、调端口、事务边界、发事件 | `application/service/` |
+
+**领域策略规则（`domain/service/`）：**
+
+- 纯 Java、零框架依赖（无 Spring 注解），与领域层其余部分同一铁律
+- 需要的事实由应用层查好后作为参数传入，**不注入任何端口、不做 I/O**——出现 repository/HTTP 调用即违规（那是编排，归应用层）
+- 无状态；由应用层直接实例化，或经配置类 `@Bean` 工厂方法注册为 Bean
+- 两种反面对照：规则写成应用 Service 私有方法（规则泄露、领域贫血）；`domain/service` 里放带端口注入的「服务」（破坏零依赖）
+
+**应用服务规则：** 只做编排，不包含具体业务规则；跨实体编排放 `application/service`，同层 Service 可直接协作。
 
 ***
 
@@ -327,7 +340,7 @@ spring:
 | 8 | **事务内外发消息** | 事务回滚但消息已发出，数据/消息不一致 | 事件适配器注册 `afterCommit` 后发送 |
 | 9 | **配置类集中堆放** | 无关配置互相牵连，适配器不可插拔 | 适配器私有配置就近放置，顶层只留共享配置 |
 | 10 | **为拿计数加载全量列表**（`findByUserId(x).size()`） | 全量实体进内存，性能反模式 | 出端口提供 `countByUserId` |
-| 11 | **领域层包含「服务」** | 混淆编排与业务规则归属 | 跨实体编排放 `application/service`；纯计算内聚到值对象 |
+| 11 | **业务规则塞进应用服务 / 领域层放入带 I/O 的「服务」** | 规则泄露致领域贫血；或破坏 domain 零依赖铁律 | 规则优先实体/VO；无自然宿主的规则放 `domain/service` 纯策略（事实由应用层传入）；编排归 `application/service` |
 | 12 | **枚举用 ORDINAL 持久化** | 数据库值无意义，枚举重排序导致数据错乱 | JpaEntity 必须 `@Enumerated(EnumType.STRING)` |
 | 13 | **skip `@Version`** | 并发更新丢失数据 | 所有可变 JpaEntity 必须 `@Version` |
 | 14 | **字段注入 `@Autowired`** | 隐藏依赖、难以测试 | 构造器注入 `@RequiredArgsConstructor` |

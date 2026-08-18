@@ -4,7 +4,9 @@
 
 > **本文档是本项目架构设计的唯一权威。** `.claude/rules/` 下的各规范文件均以本文档确立的分层与包结构为准。
 
-**技术栈基线：** Java 21 · Spring Boot 4.1.x · Spring Framework 7 · MySQL 8.0（生产）· Testcontainers（测试）· Maven 3.9+
+**技术栈基线：** Java 21 · Spring Boot 4.1.x · Spring Framework 7 · MySQL 8.0（生产）· Testcontainers 2.x（测试）· Maven 3.9+
+
+> **Java 版本选型：** Java 21 是当前最稳妥的 LTS 基线（支持至 2031）；Spring Boot 4.1 支持 Java 17–26，后续可平滑升级至 Java 25（2025-09 LTS）。Maven 4 尚未 GA（仅 RC 预览版，官方不建议生产使用），故基线保持 Maven 3.9+。
 
 ---
 
@@ -32,7 +34,10 @@ com.example.myapp
 │   │   ├── Order.java
 │   │   ├── UserId.java                     # 标识符值对象
 │   │   ├── Email.java                      # 带校验规则的值对象
-│   │   └── PricingPolicy.java              # 定价规则（值对象，内聚纯计算逻辑）
+│   │   ├── DiscountRate.java               # 折扣率（值对象，[0,1]，减免比例语义）
+│   │   └── PriceScheme.java                # 定价方案（值对象，内聚纯计算逻辑）
+│   ├── service                             # 领域策略/领域服务（按需，零框架依赖）
+│   │   └── VolumeDiscountPolicy.java       # 跨聚合事实的规则计算（不访问端口）
 │   ├── event                               # 领域事件
 │   │   ├── DomainEvent.java                # 事件标记接口
 │   │   └── OrderCreatedEvent.java
@@ -53,7 +58,7 @@ com.example.myapp
 │   ├── service                             # 应用服务（用例编排）
 │   │   ├── UserService.java
 │   │   ├── OrderService.java
-│   │   └── PricingService.java             # 跨实体编排逻辑
+│   │   └── PricingService.java             # 编排：查事实 + 委托领域策略
 │   └── dto                                 # 应用层 DTO / Command / Query
 │       ├── CreateOrderCommand.java
 │       ├── OrderItemCommand.java
@@ -107,9 +112,10 @@ com.example.myapp
 src/test/java/com.example.myapp
 ├── unit                                    # 纯逻辑测试，零容器
 │   ├── domain
-│   │   └── PricingPolicyTest.java
-│   └── application
-│       └── OrderServiceTest.java
+│   │   └── PriceSchemeTest.java
+│   ├── application
+│   │   └── OrderServiceTest.java
+│   └── HexagonalArchitectureTest.java      # ArchUnit 架构守护（依赖方向铁律）
 ├── integration                             # 适配器集成测试
 │   └── UserRepositoryAdapterTest.java
 └── e2e                                     # 端到端测试
@@ -122,6 +128,7 @@ src/test/java/com.example.myapp
 |------|---------|------|
 | 入端口 | `{Action}{Entity}UseCase` | `CreateOrderUseCase` |
 | 应用服务 | `{Entity}Service` | `OrderService` |
+| 领域策略/领域服务 | `{BusinessConcept}Policy` | `VolumeDiscountPolicy` |
 | 出端口（仓库） | `{Entity}Repository` | `UserRepository` |
 | 出端口（外部系统） | `{Service}Gateway` | `PaymentGateway` |
 | JPA 实体 | `{Entity}JpaEntity` | `UserJpaEntity` |
@@ -132,7 +139,7 @@ src/test/java/com.example.myapp
 | 应用层 DTO | `{Action}{Entity}Command` / `{Entity}Dto` | `CreateOrderCommand` / `UserDto` |
 | Web 层 DTO | `{Action}{Entity}Request` / `{Entity}Response` | `CreateOrderRequest` / `UserResponse` |
 | 领域异常 | `{BusinessCondition}Exception` | `InsufficientStockException` |
-| 单元测试 | `{ClassUnderTest}Test` | `PricingPolicyTest` |
+| 单元测试 | `{ClassUnderTest}Test` | `PriceSchemeTest` |
 | 集成测试 | `{AdapterUnderTest}Test` | `UserRepositoryAdapterTest` |
 | 端到端测试 | `{BusinessFlow}Test` | `OrderFlowTest` |
 
@@ -216,34 +223,74 @@ public class User {
 
 #### 值对象承载纯计算逻辑
 
-原可能放在 domain.service 中的纯计算逻辑，内聚到值对象中，领域层不包含「服务」：
+业务规则优先内聚到自然宿主：操作自身数据的规则放实体方法，自包含数据的纯计算放值对象。跨对象传递的语义概念同样固化为 VO——`DiscountRate` 把「减免比例」（0.10 = 减 10%）的语义与 [0,1] 区间校验内聚在构造期，从类型上杜绝与「支付乘数」（0.90）混淆：
 
 ```java
-// domain/model/PricingPolicy.java
-public class PricingPolicy {
-    private final BigDecimal basePrice;
-    private final BigDecimal discountRate;
+// domain/model/DiscountRate.java
+public record DiscountRate(BigDecimal value) {
 
-    public PricingPolicy(BigDecimal basePrice, BigDecimal discountRate) {
-        if (basePrice.compareTo(BigDecimal.ZERO) < 0) {
+    /** 零折扣 */
+    public static final DiscountRate ZERO = new DiscountRate(BigDecimal.ZERO);
+
+    public DiscountRate {
+        if (value == null
+                || value.compareTo(BigDecimal.ZERO) < 0
+                || value.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException(
+                    "Discount rate must be between 0 and 1, was: " + value);
+        }
+    }
+
+    /** 对金额应用折扣：返回减免后的金额（amount × (1 − 折扣率)） */
+    public BigDecimal applyTo(BigDecimal amount) {
+        return amount.multiply(BigDecimal.ONE.subtract(value));
+    }
+}
+
+// domain/model/PriceScheme.java —— 定价方案：单价 + 折扣率，内聚最终价计算
+public record PriceScheme(BigDecimal basePrice, DiscountRate discountRate) {
+
+    public PriceScheme {
+        if (basePrice == null || basePrice.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("Base price must not be negative");
         }
-        if (discountRate.compareTo(BigDecimal.ZERO) < 0
-                || discountRate.compareTo(BigDecimal.ONE) > 0) {
-            throw new IllegalArgumentException("Discount rate must be between 0 and 1");
-        }
-        this.basePrice = basePrice;
-        this.discountRate = discountRate;
     }
 
     /** 纯计算逻辑，无需外部依赖 */
     public BigDecimal calculateFinalPrice(int quantity) {
         BigDecimal subtotal = basePrice.multiply(BigDecimal.valueOf(quantity));
-        BigDecimal discount = subtotal.multiply(discountRate);
-        return subtotal.subtract(discount);
+        return discountRate.applyTo(subtotal);
     }
 }
 ```
+
+#### 领域策略/领域服务（按需）：无自然宿主的业务规则
+
+并非所有规则都有自然宿主——依赖跨聚合「事实」的规则（如按用户历史订单数确定阶梯折扣）硬塞进实体/值对象，会造成牵强的参数列表与假宿主。这类规则用**领域策略/领域服务**承载（`domain/service/`），与领域层其余部分一样零框架依赖：**需要的事实由应用层查好后作为参数传入，领域策略自身不访问任何端口。**
+
+```java
+// domain/service/VolumeDiscountPolicy.java —— 领域策略：纯规则计算，零框架依赖
+public class VolumeDiscountPolicy {
+
+    private static final long LOYALTY_THRESHOLD = 10;
+    private static final long VIP_THRESHOLD = 100;
+    private static final DiscountRate LOYALTY_RATE = new DiscountRate(new BigDecimal("0.10"));
+    private static final DiscountRate VIP_RATE = new DiscountRate(new BigDecimal("0.15"));
+
+    /** 按历史订单数确定折扣率（纯函数，事实由应用层查好传入） */
+    public DiscountRate discountRateFor(long previousOrderCount) {
+        if (previousOrderCount >= VIP_THRESHOLD) {
+            return VIP_RATE;
+        }
+        if (previousOrderCount >= LOYALTY_THRESHOLD) {
+            return LOYALTY_RATE;
+        }
+        return DiscountRate.ZERO;
+    }
+}
+```
+
+> 领域策略无状态、不标注 Spring 注解：由应用层直接实例化，或经配置类 `@Bean` 工厂方法注册为 Bean——两种方式都保持领域类零框架依赖。判断规则放实体/值对象还是领域策略，见误区五。
 
 #### 领域事件与类型化业务异常
 
@@ -414,16 +461,12 @@ public class UserService implements GetUserUseCase {
 @RequiredArgsConstructor
 public class PricingService {
     private final OrderRepository orderRepository;
+    private final VolumeDiscountPolicy volumeDiscountPolicy = new VolumeDiscountPolicy();
 
-    /** 跨实体编排：需要查询订单历史来计算阶梯折扣 */
-    public BigDecimal calculateOrderDiscount(String userId, List<OrderItem> items) {
+    /** 应用服务只做编排：查询事实（历史订单数），规则计算委托领域策略 */
+    public DiscountRate calculateOrderDiscount(String userId, List<OrderItem> items) {
         long previousOrderCount = orderRepository.countByUserId(userId);
-        return determineVolumeDiscount(previousOrderCount);
-    }
-
-    private BigDecimal determineVolumeDiscount(long orderCount) {
-        // 阶梯折扣规则 ...
-        return BigDecimal.ZERO;
+        return volumeDiscountPolicy.discountRateFor(previousOrderCount);
     }
 }
 
@@ -444,8 +487,8 @@ public class OrderService implements CreateOrderUseCase {
 
         // 编排领域对象完成业务
         Order order = Order.create(user, command.items());
-        // 跨实体编排：定价
-        BigDecimal discount = pricingService.calculateOrderDiscount(
+        // 跨实体编排：定价（策略产出 DiscountRate，聚合应用之）
+        DiscountRate discount = pricingService.calculateOrderDiscount(
             command.userId(), order.getItems());
         order.applyDiscount(discount);
 
@@ -551,7 +594,8 @@ public class UserRepositoryAdapter implements UserRepository {  // 实现 applic
 }
 
 // infrastructure/adapter/out/persistence/config/JpaConfig.java
-// 注意：Spring Boot 4 中 @EntityScan 的包名已迁移
+// 注意：Spring Boot 4 中 @EntityScan 已迁移至
+// org.springframework.boot.persistence.autoconfigure.EntityScan（spring-boot-persistence 模块）
 @Configuration
 @EntityScan(basePackages = "com.example.myapp.infrastructure.adapter.out.persistence.entity")
 @EnableJpaRepositories(basePackages = "com.example.myapp.infrastructure.adapter.out.persistence.repository")
@@ -603,7 +647,16 @@ public class KafkaConfig {
 }
 ```
 
-> Kafka 依赖坐标是 `org.springframework.kafka:spring-kafka`（Spring Boot 没有名为 `spring-boot-starter-kafka` 的 starter），由 Boot 自动配置。
+> Kafka 按需引入 `org.springframework.boot:spring-boot-starter-kafka`（SB4 模块化 starter，自动配置 `KafkaTemplate` 等基础设施）。
+
+**可靠性边界与升级路径：** `afterCommit` 只解决「事务回滚但消息已发出」这一类不一致，它保证的是 **at-most-once**——若事务提交后、消息发送前应用崩溃，消息将永久丢失。对不允许丢失的事件，行业标准的演进路径：
+
+```text
+afterCommit（单体可接受，当前方案）
+  → Transactional Outbox（事件先落库 + relay 轮询外发，at-least-once；
+    Spring Modulith 的 spring-modulith-events 提供开箱实现）
+  → Kafka 事务 + 幂等消费者（端到端 exactly-once 语义）
+```
 
 #### 出站适配器 —— 外部系统
 
@@ -765,7 +818,8 @@ public class GlobalExceptionHandler {
 |---------|------|---------|------|------|
 | 领域单元测试 | `unit/domain/` | 零依赖 | JUnit 5 + AssertJ | 测试实体行为、值对象计算逻辑，毫秒级执行 |
 | 应用服务测试 | `unit/application/` | domain + mock | JUnit 5 + Mockito | Mock 出端口，验证用例编排逻辑 |
-| 适配器集成测试 | `integration/` | 全栈 | `@SpringBootTest` / `@DataJpaTest` + Testcontainers（MySQL） | 验证适配器与真实基础设施的交互 |
+| 架构守护测试 | `unit/` | 零依赖 | ArchUnit + JUnit 5 | 依赖方向铁律的自动化强制（见下） |
+| 适配器集成测试 | `integration/` | 持久化切片 | `@DataJpaTest` + `@Import` + Testcontainers（MySQL） | 验证适配器与真实基础设施的交互；需全上下文的适配器用 `@SpringBootTest` |
 | 端到端测试 | `e2e/` | 全栈 | `@SpringBootTest` + `@AutoConfigureMockMvc` + WireMock | 验证完整请求链路，下游用 WireMock 打桩 |
 
 > Spring Boot 4 注意：`@MockBean`/`@SpyBean` 已移除，改用 `@MockitoBean`/`@MockitoSpyBean`；`@SpringBootTest` 不再自动注入 MockMvc，必须加 `@AutoConfigureMockMvc`。
@@ -773,26 +827,26 @@ public class GlobalExceptionHandler {
 ### 领域层单元测试（零依赖）
 
 ```java
-// unit/domain/PricingPolicyTest.java
-class PricingPolicyTest {
+// unit/domain/PriceSchemeTest.java
+class PriceSchemeTest {
 
     @Test
     void calculateFinalPrice_withQuantityAndDiscount() {
-        PricingPolicy policy = new PricingPolicy(
+        PriceScheme scheme = new PriceScheme(
             new BigDecimal("100.00"),
-            new BigDecimal("0.10")
+            new DiscountRate(new BigDecimal("0.10"))
         );
 
-        BigDecimal result = policy.calculateFinalPrice(5);
+        BigDecimal result = scheme.calculateFinalPrice(5);
 
-        // 100 * 5 = 500, 500 * 0.10 = 50, 500 - 50 = 450
+        // 100 * 5 = 500, 500 * (1 − 0.10) = 450
         assertThat(result).isEqualByComparingTo(new BigDecimal("450.00"));
     }
 
     @Test
     void constructor_rejectsNegativeBasePrice() {
-        assertThatThrownBy(() -> new PricingPolicy(
-            new BigDecimal("-1"), new BigDecimal("0.1")
+        assertThatThrownBy(() -> new PriceScheme(
+            new BigDecimal("-1"), DiscountRate.ZERO
         )).isInstanceOf(IllegalArgumentException.class);
     }
 }
@@ -820,7 +874,7 @@ class OrderServiceTest {
         when(userRepository.findById(any())).thenReturn(Optional.of(user));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(pricingService.calculateOrderDiscount(anyString(), anyList()))
-            .thenReturn(new BigDecimal("10.00"));
+            .thenReturn(new DiscountRate(new BigDecimal("0.10")));
 
         CreateOrderCommand command = new CreateOrderCommand("u1", List.of());
 
@@ -844,25 +898,59 @@ class OrderServiceTest {
 }
 ```
 
-### 适配器集成测试（Testcontainers，真实 MySQL）
+### 架构守护测试（ArchUnit，依赖方向铁律的自动化强制）
+
+「依赖向内」不能只靠文档与 Code Review 维持——用 [ArchUnit](https://www.archunit.org/) 把分层规则固化为零容器、毫秒级的单元测试，架构腐化在 CI 阶段即被拦截：
+
+```java
+// unit/HexagonalArchitectureTest.java
+@AnalyzeClasses(packages = "com.example.myapp")
+class HexagonalArchitectureTest {
+
+    /** domain 零框架依赖：不引入 Spring / Jakarta / Kafka / Lombok，也不依赖任何外层 */
+    @ArchTest
+    static final ArchRule domainZeroFrameworkDependency = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "org.springframework..", "jakarta..", "lombok..",
+                    "com.example.myapp.application..", "com.example.myapp.infrastructure..");
+
+    /** application 不依赖 infrastructure 层与具体基础设施技术（装配注解除外） */
+    @ArchTest
+    static final ArchRule applicationNotDependOnInfrastructure = noClasses()
+            .that().resideInAPackage("..application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.example.myapp.infrastructure..",
+                    "jakarta.persistence..", "org.springframework.web..",
+                    "org.springframework.data.jpa..", "org.apache.kafka..");
+
+    /** Controller 只依赖入端口，不直接触碰出端口与出站适配器 */
+    @ArchTest
+    static final ArchRule controllersOnlyDependOnInPorts = noClasses()
+            .that().resideInAPackage("..adapter.in.web.controller..")
+            .should().dependOnClassesThat().resideInAnyPackage("..port.out..", "..adapter.out..");
+}
+```
+
+> 依赖坐标 `com.tngtech.archunit:archunit-junit5`（Spring Boot BOM 不管理，需显式声明版本）。规则可按需扩展：入站/出站适配器双向隔离、出端口命名约束等。
+
+### 适配器集成测试（@DataJpaTest 切片 + Testcontainers 真实 MySQL）
+
+持久化适配器用 `@DataJpaTest` 切片（只加载 JPA 相关 Bean，不启动全上下文，比 `@SpringBootTest` 快一个量级），`@Import` 显式导入被测适配器；容器连接信息用 `@ServiceConnection` 自动装配，免写 `@DynamicPropertySource`：
 
 ```java
 // integration/UserRepositoryAdapterTest.java
-@SpringBootTest
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = Replace.NONE)   // 不替换为内嵌库，使用容器 MySQL
+@Import(UserRepositoryAdapter.class)                 // 切片不含适配器，显式导入
 @Testcontainers
 class UserRepositoryAdapterTest {
 
     @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
+    @ServiceConnection        // SB 3.1+：自动装配数据源连接信息，免 @DynamicPropertySource
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.0");
 
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
-    }
-
-    @Autowired
+    @Autowired  // 测试切片允许字段注入；生产代码必须构造器注入
     UserRepository userRepository;   // 注入的是适配器实现，但面向接口编程
 
     @Test
@@ -878,6 +966,11 @@ class UserRepositoryAdapterTest {
 }
 ```
 
+> 说明：
+> - `@ServiceConnection` 需要 `spring-boot-testcontainers` 依赖；多容器或非连接类属性（如 WireMock 端口）场景仍用 `@DynamicPropertySource`（e2e 基类即两者并存）。
+> - Testcontainers 2.x 中容器类迁移至模块专属包：`org.testcontainers.mysql.MySQLContainer`（旧包 `org.testcontainers.containers` 已废弃），且泛型参数已移除（`MySQLContainer` 而非 `MySQLContainer<?>`）。
+> - 消息、外部系统等需要完整上下文的适配器测试，仍用 `@SpringBootTest` + Testcontainers。
+>
 > 测试数据库与生产同为 MySQL（Testcontainers），不再依赖 H2 模拟，消除方言差异带来的假阳性。
 
 ### 端到端测试（完整请求链路 + WireMock 下游打桩）
@@ -936,8 +1029,11 @@ Controller 必须通过应用服务（UseCase）进行编排，保持领域层�
 **误区四：端口命名不清晰**
 推荐使用 `port.in` 和 `port.out` 明确表达交互方向，比 `api` / `spi` 更加直观易懂。
 
-**误区五：领域层包含「服务」**
-领域层应只包含实体自身行为和值对象。跨实体的编排逻辑属于应用层的职责，应放在 `application/service` 中。纯计算逻辑可以内聚到值对象中。
+**误区五：分不清「应用服务」与「领域服务」的边界**
+- 跨实体的**编排**（查询事实、调用端口、事务边界、发布事件）→ `application/service`；应用服务不应包含具体业务规则
+- 自然归属实体/值对象的纯计算 → 实体方法 / 值对象（如 `PriceScheme`）
+- 不依赖基础设施、又不自然归属单一实体/值对象的业务规则 → **领域策略/领域服务**（`domain/service/`，纯 Java、零框架依赖，输入是应用层查好的事实，如 `VolumeDiscountPolicy`）
+- 两种典型错误：① 把阶梯折扣这类规则写成应用 Service 的私有方法（如 `PricingService.determineVolumeDiscount`）——业务规则泄露到编排层，领域层贫血；② 在 `domain/service` 放带端口注入/外部调用的「服务」——破坏零依赖铁律
 
 **误区六：映射逻辑散落各处**
 `toDomain()` / `from()` 等跨技术栈转换方法应集中在各适配器下的 `mapper/` 目录中；应用层 DTO 与领域对象的转换用 DTO 上的静态工厂（`from()`）承载。
@@ -946,7 +1042,7 @@ Controller 必须通过应用服务（UseCase）进行编排，保持领域层�
 各适配器的私有配置（如 `JpaConfig`、`KafkaConfig`、`PaymentConfig`）应放在对应适配器目录下就近管理，顶层 `config` 仅保留跨适配器共享的全局配置（如 `SecurityConfig`）。
 
 **误区八：事务内外发消息**
-在 `@Transactional` 方法内直接调用外部消息系统，事务回滚后消息已发出，造成数据与消息不一致。事件发布适配器必须注册 `TransactionSynchronization.afterCommit`，确保只在事务提交成功后发送（见 4.3）。
+在 `@Transactional` 方法内直接调用外部消息系统，事务回滚后消息已发出，造成数据与消息不一致。事件发布适配器必须注册 `TransactionSynchronization.afterCommit`，确保只在事务提交成功后发送（见 4.3）。注意 `afterCommit` 是 at-most-once 语义，不允许丢失的事件需升级为 Transactional Outbox（见 4.3 的可靠性边界说明）。
 
 **误区九：为拿计数加载全量数据**
 `repository.findByUserId(userId).size()` 会把全部实体加载进内存。出端口应提供 `countByUserId` 这类计数方法。
@@ -989,9 +1085,8 @@ myapp/
 
     <properties>
         <java.version>21</java.version>
-        <!-- 示例值，以项目实际采用的 Spring Boot 4.1.x 补丁版本为准 -->
-        <spring-boot.version>4.1.5</spring-boot.version>
-        <testcontainers.version>1.21.4</testcontainers.version>
+        <!-- 以项目实际采用的 Spring Boot 4.1.x 补丁版本为准 -->
+        <spring-boot.version>4.1.0</spring-boot.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -1173,11 +1268,11 @@ myapp/
             <scope>runtime</scope>
         </dependency>
 
-        <!-- 出站适配器：消息（无 starter，直接依赖 spring-kafka，按需引入） -->
+        <!-- 出站适配器：消息（SB4 模块化 starter，按需引入） -->
         <!--
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
         -->
 
@@ -1213,17 +1308,17 @@ myapp/
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>mysql</artifactId>
-            <version>${testcontainers.version}</version>
+            <artifactId>testcontainers-mysql</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- SB4 起 Spring Boot BOM 不再管理 Testcontainers 版本，需显式声明（如 1.21.4）；
+        <!-- Testcontainers 2.x：坐标更名为 testcontainers-* 前缀，版本由 Boot BOM 导入的
+             testcontainers-bom 管理（4.1.0 对应 2.0.5），无需显式声明；容器类迁移至
+             org.testcontainers.mysql 包并移除泛型参数；
              @DataJpaTest 拆分至 spring-boot-starter-data-jpa-test，@ServiceConnection 需 spring-boot-testcontainers -->
     </dependencies>
 </project>
@@ -1327,6 +1422,16 @@ public class JpaConfig {
 
 注意：application 模块的测试不应启动 Spring 容器。如果需要 `@SpringBootTest`，应放在 infrastructure 或 bootstrap 模块中。application 模块的测试使用 `@ExtendWith(MockitoExtension.class)` 纯 JUnit 测试。
 
+### 10.9 演进路径上的可选台阶：Spring Modulith
+
+单模块 → Maven 多模块并非唯一的演进路径。[Spring Modulith](https://spring.io/projects/spring-modulith)（2.1.x 随 Spring Boot 4.1 发布火车发布）是 Spring 官方的「模块化单体」方案，可作为两者之间的中间台阶：
+
+- **模块边界自动化验证**：以包为单位声明 `ApplicationModule`，自动验证模块间只允许走公开 API（比通用 ArchUnit 规则更懂 Spring 组件模型）；
+- **Transactional Outbox 开箱实现**：`spring-modulith-events` 模块提供事件落库 + 外发的完整机制，恰好覆盖 4.3 节所述 `afterCommit` 的可靠性缺口；
+- **模块文档自动生成**：从代码结构生成模块画布（C4 风格组件图）。
+
+适用判断：团队规模尚不足以维护多 Maven 模块、但希望获得编译期之外的模块边界强制力时，Spring Modulith 是比重构为多模块成本更低的选择；它与本章的多模块结构不冲突，多模块化之后仍可保留其事件机制。
+
 ---
 
 ## 十一、总结
@@ -1337,12 +1442,12 @@ public class JpaConfig {
 - **端口隔离**：用 `port.in` 声明系统提供的能力（UseCase），用 `port.out` 声明系统需要的能力（Repository / Gateway / EventPublisher）。仓库接口统一定义在 `application.port.out` 中，不重复定义。
 - **适配器实现**：Upstream 放在 `adapter.in/`，Downstream 放在 `adapter.out/`。
 - **用例驱动**：以应用服务为核心编排业务流程，Controller 和 Repository 都只是适配器。
-- **领域纯粹**：领域层只包含实体、值对象、领域事件和类型化业务异常，不包含服务和仓库接口。
+- **领域纯粹**：领域层只包含实体、值对象、领域事件、类型化业务异常，以及按需的纯领域策略/领域服务（零框架依赖、不访问端口）；不包含仓库接口与用例编排。
 - **映射集中**：跨技术栈的对象转换集中在各适配器的 `mapper/` 目录中；应用层 DTO 转换用静态工厂承载。
 - **配置就近**：适配器私有配置放在适配器目录下，全局配置才放顶层。
 - **异常分层**：类型化领域异常（稳定错误码 + 业务上下文）由入站适配器统一映射为传输协议响应。
-- **事务一致**：事件外发必须延迟到事务提交成功后（`afterCommit`）。
-- **测试分层**：`unit`（零容器）→ `integration`（Testcontainers 真实基础设施）→ `e2e`（完整链路 + WireMock 下游打桩）。
+- **事务一致**：事件外发必须延迟到事务提交成功后（`afterCommit`，at-most-once）；不允许丢失的事件升级为 Transactional Outbox。
+- **测试分层**：`unit`（零容器，含 ArchUnit 架构守护）→ `integration`（`@DataJpaTest` 切片 + Testcontainers 真实基础设施）→ `e2e`（完整链路 + WireMock 下游打桩）。
 - **多模块分层**：domain 零框架依赖，application 仅注解依赖，infrastructure 引入 Spring Boot，bootstrap 聚合启动。
 
 掌握这套包结构设计，你的 Spring Boot 项目将拥有清晰的边界、高度的可测试性，以及从容应对技术栈演进的能力。

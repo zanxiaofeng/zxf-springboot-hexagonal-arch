@@ -19,19 +19,21 @@ paths:
 
 - JUnit 5
 - AssertJ
-- Testcontainers（integration/e2e 用真实 MySQL 容器；H2 仅作无法使用容器时的降级选项）
+- Testcontainers 2.x（integration/e2e 用真实 MySQL 容器；H2 仅作无法使用容器时的降级选项）
+- ArchUnit 1.5.x（架构守护测试 `unit/HexagonalArchitectureTest`，依赖方向铁律自动化强制；BOM 不管理，显式声明版本）
 - Spring Cloud Contract（与 Spring Boot 4 兼容版本，属 Spring Cloud 2025.1.x release train；具体版本号见 [Supported Versions](https://github.com/spring-cloud/spring-cloud-release/wiki/Supported-Versions)）
-- WireMock 3.x（`org.wiremock:wiremock-standalone`；Java 包名仍为 `com.github.tomakehurst.wiremock`）
+- WireMock 3.13.2（`org.wiremock:wiremock-standalone`；Java 包名仍为 `com.github.tomakehurst.wiremock`；4.x 处于 beta，暂不跟进）
 
 **SB4 测试依赖与注解包名（实测 4.1.0，与 SB3 差异）：**
 
 | 事项 | SB4 现状 |
 |------|---------|
-| Testcontainers 版本 | **BOM 不再管理**，需显式声明（实测可用 1.21.4） |
+| Testcontainers | **2.x 坐标更名**：`testcontainers-junit-jupiter` / `testcontainers-mysql`；版本由 Boot BOM 导入的 testcontainers-bom 管理（4.1.0 → 2.0.5），**无需显式声明**；容器类迁移至 `org.testcontainers.mysql.MySQLContainer`（旧包 `org.testcontainers.containers` 废弃），泛型参数已移除 |
 | `@DataJpaTest` | 拆分至 `spring-boot-starter-data-jpa-test`；包名 `org.springframework.boot.data.jpa.test.autoconfigure` |
 | `@AutoConfigureMockMvc` | 包名 `org.springframework.boot.webmvc.test.autoconfigure`（随 starter-webmvc-test 提供） |
 | `@AutoConfigureTestDatabase` | 包名 `org.springframework.boot.jdbc.test.autoconfigure`（随 data-jpa-test 传递） |
 | `@ServiceConnection` | 需依赖 `spring-boot-testcontainers`；包名不变 |
+| ArchUnit | `com.tngtech.archunit:archunit-junit5`（架构守护测试，`unit/HexagonalArchitectureTest`）；BOM 不管理，需显式声明版本 |
 
 ## Infrastructure（SB4 实测补充）
 
@@ -49,7 +51,7 @@ paths:
 - Spring Web MVC（`spring-boot-starter-webmvc`）
 - Spring Security（CSRF configuration per project requirements）
 - RestClient / RestTemplate（下游 HTTP 客户端，需 `spring-boot-starter-restclient`；RestClient 为新模块首选，RestTemplate 处理维护模式）
-- spring-kafka（按需；**Spring Boot 无 Kafka starter**，直接依赖 `org.springframework.kafka:spring-kafka`，由 Boot 自动配置）
+- Kafka（按需；SB4 模块化 starter `spring-boot-starter-kafka`，自动配置 `KafkaTemplate` 等基础设施）
 
 ## Starter 模块化（Spring Boot 4 关键变化）
 

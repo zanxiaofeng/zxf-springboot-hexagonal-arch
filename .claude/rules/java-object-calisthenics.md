@@ -223,7 +223,7 @@ String city = order.shippingCity();
 
 **生产落地：** 不作硬性拦截，作为**设计信号**：
 
-- 行为类（Service、helper）依赖超过 ~5 个 → 审视是否多个职责挤在一个类里，按用例拆分或聚合协作者（把总是同时出现的几个依赖提炼为一个值对象或应用层协作 Service——本项目领域层不含服务，见 architecture.md §3.5）
+- 行为类（Service、helper）依赖超过 ~5 个 → 审视是否多个职责挤在一个类里，按用例拆分或聚合协作者（把总是同时出现的几个依赖提炼为一个值对象、领域策略或应用层协作 Service——边界见 architecture.md §3.5）
 - 出现「字段分组」现象（一半方法只用一半字段）→ 按分组拆类
 
 **例外：** JPA Entity（字段即表列映射）、DTO/record（数据载体）、`@ConfigurationProperties`（配置绑定）天然多字段，不适用本规则。

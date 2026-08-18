@@ -20,9 +20,9 @@
     <properties>
         <java.version>21</java.version>
         <!-- WireMock 版本显式声明（Spring Boot BOM 不管理；SB4 移除 spring-cloud-contract-wiremock 场景） -->
-        <wiremock.version>3.13.0</wiremock.version>
-        <!-- SB4 起 Spring Boot BOM 不再管理 Testcontainers 版本，需显式声明 -->
-        <testcontainers.version>1.21.4</testcontainers.version>
+        <wiremock.version>3.13.2</wiremock.version>
+        <!-- ArchUnit 版本显式声明（Spring Boot BOM 不管理） -->
+        <archunit.version>1.5.0</archunit.version>
     </properties>
 
     <dependencies>
@@ -101,17 +101,23 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- ── 测试：Testcontainers（真实 MySQL）── -->
+        <!-- ── 测试：Testcontainers 2.x（真实 MySQL；版本由 BOM 管理，坐标为 2.x 新命名）── -->
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>mysql</artifactId>
-            <version>${testcontainers.version}</version>
+            <artifactId>testcontainers-mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ── 测试：ArchUnit 架构守护（依赖方向铁律的自动化强制）── -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
 
