@@ -97,7 +97,7 @@ public class PaymentRouter {
 
     public Receipt pay(String channel, Money amount) {
         PaymentStrategy strategy = Optional.ofNullable(strategies.get(channel))
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_CHANNEL_UNSUPPORTED));
+                .orElseThrow(() -> new UnsupportedPaymentChannelException(channel));
         return strategy.pay(amount);
     }
 }
@@ -116,7 +116,7 @@ public class PaymentRouter {
 3. **接口契约（强制部分）** —— 实现类必须满足接口声明的契约：
    - 不得强化前置条件（接口说接受任意正数，实现不能只接受偶数）
    - 不得弱化后置条件（接口承诺非空返回，实现不能返回 null / 空）
-   - 不得抛出接口未声明的异常类型（业务错误统一 `BusinessException` + `ErrorCode`，见 exception-handling.md）
+   - 不得抛出接口未声明的异常类型（业务错误用类型化领域异常：`domain/exception/` + `CODE` 常量，见 `exception-handling.md` §3）
    - 不得对「不需要的能力」抛出 `UnsupportedOperationException` —— 那是 ISP 问题（§2.4），应拆接口
 
 ```java

@@ -449,6 +449,22 @@ public class OrderService {
 - **禁止** `org.springframework.lang.Nullable`（SB4 已移除支持，Actuator endpoint 会报错）
 - 应用代码统一使用 `jakarta.annotation` 或 JSpecify，**禁止**旧版 `javax.annotation`（SB4 已完全移除）
 
+#### NullAway + Error Prone 编译期强制（可选增强）
+
+JSpecify 注解本身不产生检查，需静态分析器消费。推荐 **NullAway**（Uber，作为 Error Prone 的空值规则运行）：`@NullMarked` 包内违规传参/解引用在 CI 直接编译失败——空值契约成为「不修复就无法合并」的门禁。
+
+**渐进引入策略（禁止全局一次开启）：**
+
+1. 新包从第一天起 `@NullMarked`（零成本区）
+2. 存量包逐个加 `@NullMarked` 并修复报错，**按包提交 PR**
+3. 未覆盖的包不加标注，按未标注语义跳过
+4. NullAway 先设 `warn` 级，存量达标后再升 `ERROR`
+5. 达标后把「新增代码必须在 `@NullMarked` 包内」写入评审清单防回潮
+
+切忌反向操作——先全局启用再逐包豁免，豁免清单只增不减。Maven 集成需把 Error Prone 挂到 `maven-compiler-plugin`，且 JDK 16+ 强封装（JEP 396）要求配置 `--add-exports`/`--add-opens`（缺失时构建以 IllegalAccessError 失败）；关键开关：`NullAway:AnnotatedPackages` 限定检查范围、`NullAway:JSpecifyMode=true` 按 `@NullMarked` 语义推断非空默认。
+
+> **与 Bean Validation 的分工：** 静态分析管代码内部契约（编译期），Bean Validation 管外部输入（运行期）——编译器看不见请求体/消息负载/配置文件。标准姿势是「入口校验一次、内部信任契约」，互补不替代。
+
 ### 4.3 不可变集合
 
 ```java
@@ -529,6 +545,32 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
 - JPA 实体避免 `@Data`（循环依赖风险）；用 `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` + `@EqualsAndHashCode.Include` 指定业务主键
 - `@ToString.Exclude` 排除敏感字段（密码、密钥等）
+- Lombok 仅限 application 与 infrastructure 层，**domain 层零依赖**（`tech-stack.md`）
+
+#### `@NonNull` 使用规则
+
+`@NonNull` 是编译期代码生成：在标注位置插入 null 检查，失败抛 `NullPointerException`（带参数名消息）。
+
+| 标注位置 | 生成行为 |
+|---------|---------|
+| 方法/构造器参数 | 方法体首行插入 null 检查 |
+| 字段 | 在 setter、`@RequiredArgsConstructor` 生成的构造器中插入检查 |
+| 方法返回值 | return 前插入检查，承诺不返回 null |
+
+**规则：**
+- **仅保留在构造器/必填依赖注入场景**——那里需要静态标注做不到的真实字节码检查；空值语义主表达用 JSpecify（§4.2），二者并存合法、存量无需返工
+- **不用于输入校验**——抛 NPE 进不了校验异常通道，Controller 入参校验走 Bean Validation（`validation.md` §2）
+- 检查只存在于 Lombok 生成的代码路径——手写 setter 会形成覆盖空洞
+- 构造器注入是无坑场景（检查路径与赋值路径完全重合）：
+
+```java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    @NonNull
+    private final OrderRepository orderRepository;   // 生成构造器首行 null 检查
+}
+```
 
 #### 工具类（@UtilityClass）
 
