@@ -4,6 +4,8 @@ paths:
 ---
 # Code Review Checklist
 
+**版本：** 1.3（2026-08-22 同步主线规范：纯赋值构造器 checklist、`@PathVariable` 格式约束细化（字符串 ID `@Pattern` / 数值 ID `@Positive`）；§2.1 模式选型指针已先行合入）
+
 > **职责边界：** 本文件是 Code Review 的**统一入口**，汇总各专题文件的审查要点，不重复具体规则定义——每条指向对应规范文件的具体章节。
 
 ***
@@ -25,6 +27,7 @@ paths:
 - [ ] 大括号是否始终使用？`@Override` 是否标注？
 - [ ] 工具选择是否遵循优先级（JDK/Spring → Lombok → Commons）？
 - [ ] Lombok `@Data` 是否避开 JPA Entity？
+- [ ] 纯赋值构造器是否一律用 `@RequiredArgsConstructor`（非 Spring Bean 同适用，见 java-coding-standard.md §5.2）？
 - [ ] 异常链是否保留 cause？
 
 ### 对象健身操（→ `java-object-calisthenics.md`）
@@ -45,7 +48,7 @@ paths:
 - [ ] Controller 是否无业务逻辑？
 - [ ] 所有端点返回 `ResponseEntity<ApiResponse<T>>`（DELETE 除外：204 No Content 无响应体）？
 - [ ] URL 模式是否遵循 `/api/v{version}/{resource-plural}` RESTful 风格？
-- [ ] `@PathVariable` ID 是否标注 `@Positive`？
+- [ ] `@PathVariable` ID 是否标注格式约束（字符串 ID 用 `@Pattern`，数值 ID 用 `@Positive`）？
 
 ### Service 层（→ `service-conventions.md`）
 - [ ] `@Transactional(readOnly = true)` 是否在类级别？
@@ -62,7 +65,7 @@ paths:
 - [ ] Null 安全是否采用三层防御（JSpecify `@NullMarked` + `Optional` + `Assert`）？（→ `java-coding-standard.md` §4.2）
 - [ ] String 字段是否用 `@NotBlank` 而非 `@NotNull`、嵌套配置是否加 `@Valid`？（NC-006/NC-014 → `null-check-governance.md` §3）
 
-### 异常处理（→ `exception-handling.md`）
+### 异常处理（→ `exception-handling.md`，业务异常表达模式选型见其 §2.1）
 - [ ] 业务错误是否全部通过类型化领域异常（`domain/exception/` + `CODE` 常量）表达？
 - [ ] 新增业务错误是否新增了独立异常类（而非只加错误码枚举值或裸 `RuntimeException`）？
 - [ ] Controller 是否零 try-catch？

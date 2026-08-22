@@ -4,9 +4,11 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
+**版本：** 1.6（2026-08-22 修订：同步主线规范——§2.8 补 `@DefaultValue` 五事实表（含「与 `@Valid` 正交」）与 `@ConstructorBinding` 按需标注、校验失败行为精确为 `BindValidationException` 包装链（Boot 4.1.0 字节码实证）；§4 注解来源表纠错（`@CheckForNull` 非 jakarta）已先行合入。§2.10 消息外化保留本仓库强制策略（主线已改按需启用，属项目级差异））
+
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
-> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。判空坏味道识别（NC 规则表）与存量代码改造执行流程见 `null-check-governance.md`。
+> **职责边界：** 本文件定义参数校验的**完整规范**——声明式 Bean Validation（Controller / Service / ConfigurationProperties）和命令式断言（Domain Entity / VO / 内部不变式）。全局异常处理与业务异常表达模式选型（§2.1）见 `exception-handling.md`，Controller 层 `@PathVariable` / 分页参数规范见 `api-conventions.md`。判空坏味道识别（NC 规则表）与存量代码改造执行流程见 `null-check-governance.md`。
 
 ***
 
@@ -470,6 +472,38 @@ public class {Feature}Properties {
 | **启动失败 = Fail Fast** | 校验失败时抛出 `ConstraintViolationException`，应用上下文初始化失败、拒绝启动。这是期望行为 —— 宁可启动失败也不带病运行 |
 | **敏感字段脱敏** | `password`、`secret`、`token` 等字段加 `@ToString.Exclude`，防止 `@Data` 生成的 `toString()` 泄露到日志 |
 | **默认值与验证不冲突** | 有默认值的字段（如 `port = 22`）仍可加验证注解；验证针对**绑定后的最终值**，默认值也必须满足约束 |
+| **`@ConstructorBinding` 按需标注** | 构造器绑定对 record 始终生效；普通类**单一构造器**自 Boot 3 起隐式构造器绑定，注解可省略；仅存在**多个构造器**（如紧凑构造器 + 便捷构造器并存）时才需显式指定绑定构造器 |
+
+#### `@DefaultValue` 默认值（消灭可空的源头手段）
+
+**机制六事实：**
+
+| 事实 | 说明 |
+|------|------|
+| **Spring Boot 专属 + 构造器绑定专属** | `@DefaultValue`（`org.springframework.boot.context.properties.bind`）的 `@Target` 为 `PARAMETER`，只被构造器绑定（record / 不可变类）的 `ValueObjectBinder` 消费——**setter 绑定的 `@Data` 类不支持**，等价物是字段初始化器（`private List<X> x = List.of();`）；也管不到 `@Value` 注入（其默认值语法是 `${key:default}`） |
+| **缺失时代入缺省而非 null** | `@DefaultValue("true")` 的字符串值经 ConversionService 转为目标类型；无参 `@DefaultValue` 为「空」语义——集合/Map/数组 → **空集合**，聚合类型 → **递归绑定空实例**（嵌套组件的 `@DefaultValue` 继续生效） |
+| **默认值也参与校验** | 默认值代入发生在校验之前，`@Validated` 校验的是兜底后的最终值——默认值自身必须满足约束注解 |
+| **集合形式与显式配置边界** | 集合默认值可用数组形式 `@DefaultValue({"a", "b"})` 或逗号分隔字符串；**显式配置（含空串）优先于默认值**——仅当属性完全缺失时才代入缺省 |
+| **不支持占位符解析** | 值必须是常量字符串，不能写 `${...}` 引用其他属性/环境变量；需占位符默认值时用 `@Value("${key:default}")`（零散项）或 `application.yml` 占位符 `${ENV:default}`（见 `null-check-governance.md` §10） |
+| **与 `@Valid` 正交** | 无值形式 `@DefaultValue` 保证嵌套对象绑定非 null 实例，`@Valid` 负责级联校验其内部约束——两者各司其职，无值形式不能替代 `@Valid` |
+
+```java
+@Validated
+@ConfigurationProperties(prefix = "{feature}")
+public record {Feature}Properties(
+        @DefaultValue List<@NotNull @Valid {Feature}Definition> definitions,   // 缺省 → 空集合，消费方直接 for-each
+        @DefaultValue Map<String, @Min(100) @Max(599) Integer> errorMappings,
+        @DefaultValue("true") boolean enabled,                                 // primitive，类型上不可空
+        @DefaultValue Trace trace) {                                           // 缺省 → 递归空实例
+    ...
+}
+```
+
+**选型直觉（与跨框架共识一致）：**
+
+- **缺失即错误的必填项**（host、credential、URL 等环境相关值）→ **不给默认**，`@NotBlank` 系约束 fail-fast——给默认值是反模式：忘了配生产值会静默连上默认地址
+- **缺失有合理缺省语义的可选项** → `@DefaultValue` / 字段初始化器，让 null 从源头不存在（消费方零判空；这是判空治理「减量」目标成本最低的一手，见 `null-check-governance.md` §9；Java/Spring 各层的完整默认值手段目录见该文件 §10）
+- **禁止用 `@Value("${key:default}")` 在各注入点散落默认值**——同一 key 的默认值多处定义必然漂移；默认值集中声明在类型化配置类（NC-014 反散落 `@Value` 的延伸）
 
 #### Hibernate Validator Duration 约束注解
 
@@ -554,7 +588,7 @@ app:
 
 > **元数据通道 ≠ 校验通道：** `spring-boot-configuration-processor`、`@NestedConfigurationProperty`、`@DeprecatedConfigurationProperty` 只在**编译期**生成元数据，服务 IDE 补全与弃用告警，「对实际绑定过程无影响」——`@NestedConfigurationProperty` **不能**触发嵌套校验（须 `@Valid`），处理器缺失也**不会**导致校验失效（只丢 IDE 体验）。
 
-> **校验失败行为：** 校验发生在 bean 初始化期，违例包装为 `ConfigurationPropertiesBindException`，FailureAnalyzer 输出 `Property`（实际键名）+ `Origin`（来源文件与行列号）+ `Reason`——排错第一落点是 `Origin`。
+> **校验失败行为：** 校验发生在 bean 初始化期，违例先抛 `BindValidationException`（含 `ValidationErrors` 明细），再由 `ConfigurationPropertiesBindingPostProcessor` 统一包装为 `ConfigurationPropertiesBindException`——绑定失败（类型转换错误等）的 cause 为 `BindException`，校验失败的 cause 为 `BindValidationException`（Boot 4.1.0 字节码实证）。FailureAnalyzer 输出 `Property`（实际键名）+ `Origin`（来源文件与行列号）+ `Reason`——排错第一落点是 `Origin`。
 
 ### 2.9 声明式校验最佳实践
 
@@ -770,10 +804,11 @@ public class BankAccount {
 
 | 注解 | 来源 | 用途 |
 |------|------|------|
-| `@NonNull` / `@Nullable` | `jakarta.annotation` (Jakarta EE 11) | 应用代码标准注解（SB4 仍可用） |
+| `@Nonnull` / `@Nullable` | `jakarta.annotation` (Jakarta EE 11) | 应用代码标准注解（SB4 仍可用） |
 | `@Nullable` / `@NullMarked` | `org.jspecify.annotations` (JSpecify) | **SB4 框架首选**，见下方 JSpecify 小节 |
-| `@Nonnull` / `@CheckForNull` | `jakarta.annotation` | Jakarta 注解 |
-| `@NonNull` | `lombok` | Lombok 项目使用 |
+| `@NonNull` | `lombok` | Lombok 项目使用（见 `java-coding-standard.md` §5.2） |
+
+> **注意：** `@CheckForNull` 不属于 `jakarta.annotation`（Jakarta EE 11 仅含 `@Nonnull`/`@Nullable`），它来自 SpotBugs / JSR-305（`edu.umd.cs.findbugs.annotations`），禁止新引入。
 
 > **注意：** Spring Boot 4 基于 Jakarta EE 11，`javax.*` 工件已完全移除（非 deprecated）。应用代码统一使用 `jakarta.annotation`，禁止使用旧版 `javax.annotation`。
 
@@ -800,7 +835,7 @@ public class OrderService {
 
 **关键规则：**
 - `@NullMarked` 标注在包（`package-info.java`）或类上，范围内所有类型默认 non-null，仅需为可空处加 `@Nullable`
-- 搭配 null checker（如 Checker Framework）或 Kotlin 可在编译期发现潜在 NPE
+- 搭配 NullAway 等 null checker 可在编译期强制检查（推荐接入，集成与代码形态约定见 `java-coding-standard.md` §4.2）
 - **Actuator endpoint 参数禁止使用 `org.springframework.lang.Nullable`**，必须改用 `org.jspecify.annotations.Nullable`（SB4 已移除对前者的支持）
 
 **强制要求：** 校验逻辑必须与注解声明的契约保持一致。
@@ -846,6 +881,7 @@ void updateUser_InvalidAge_ShouldThrowException(int invalidAge) {
 
 - [ ] DTO / `@ConfigurationProperties` 字段是否用 Bean Validation 注解（而非手动 `Assert`）？
 - [ ] `@ConfigurationProperties` 类是否加了 `@Validated`？嵌套配置是否加了 `@Valid`？
+- [ ] record / 构造器绑定配置类的默认值是否用 `@DefaultValue`（而非字段初始化）？关键配置是否未滥用默认值？（§2.8）
 - [ ] Controller 是否用 `@Valid` / `@Validated` 触发验证，而非手动校验？
 - [ ] 验证注解是否优先加在 Bean 字段上，而非方法参数上？
 - [ ] 嵌套对象是否加了 `@Valid` 级联验证？
