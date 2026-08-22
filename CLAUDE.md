@@ -10,6 +10,19 @@ Spring Boot 六边形架构（Ports & Adapters）参考实现。
 - 端口唯一定义处：`application/port/out`（Repository / Gateway / EventPublisher）
 - 错误体系：类型化领域异常（`domain/exception/` + `CODE` 常量），HTTP 映射仅在 `GlobalExceptionHandler`
 
+## 规范适配（项目选型记录）
+
+`.claude/rules/` 为服务所有同类项目的中立通用规范，涉及项目间可变选型处均以判据形式给出；本项目的实际选型如下，与规范正文冲突时以本段为准：
+
+| 选型项 | 本项目状态 | 规范出处 |
+|---|---|---|
+| 业务异常表达模式 | **模式 A（类型化领域异常）**：`domain/exception/` + `CODE` 常量 | `exception-handling.md` §2.1 |
+| ApiResponse 信封 | 含 `errors[]` 标准结构（与代码一致） | `api-conventions.md` |
+| NullAway + Error Prone | **未接入**；接入时按 `java-coding-standard.md` §4.2 步骤（先 WARN 后 ERROR） | `java-coding-standard.md` §4.2 |
+| lombok.config | 未创建；启用 `@Nullable` 构造器复制路径时按 §5.2 先创建（`copyableAnnotations`）；`lombok.addNullAnnotations = jspecify` 未启用 | `java-coding-standard.md` §5.2 |
+| 错误消息外化（i18n） | **强制策略**：注解只写消息键（`<域>.<字段>.<约束>` 三段式），存量中文字面量收敛到资源文件 | `validation.md` §2.10 |
+| 模块结构 | 当前单模块；按 `architecture.md` §11 时机演进 | `architecture.md` §11 |
+
 ## 技术栈
 
 Java 21 · Spring Boot 4.1.x · MySQL 8.0 · Flyway · Testcontainers · WireMock 3.x · Maven 3.9+

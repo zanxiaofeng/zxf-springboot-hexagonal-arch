@@ -4,7 +4,7 @@ paths:
 ---
 # Java 编码规范
 
-**版本：** 3.10（2026-08-22 修订：同步主线规范——§4.2 JSpecify/NullAway 扩充（两种世界观+裁定标准+第三条路、Maven 集成实测要点、代码形态约定）、§5.1 工具表补默认值手段 4 行（与 null-check-governance §10 对齐）、§5.2 新增构造器（@RequiredArgsConstructor）小节；项目状态按本仓库实际标注（NullAway 未接入、lombok.config 未创建）。此前主线修订：§5.2 lombok.addNullAnnotations 条目按行业核实改写——配置键自 1.18.12、jspecify 值自 1.18.38、NullAway 官方 best-effort 立场）
+**版本：** 3.11（2026-08-22 通用化：同步主线规范源——项目状态断言与项目标识符移出正文，改为条件式与通用表述；项目选型记录迁至项目 CLAUDE.md「规范适配」段。此前 3.10：同步 §4.2 JSpecify/NullAway 扩充、§5.1 工具表默认值手段、§5.2 构造器小节）
 **生效日期：** 2026-08-05
 **适用范围：** 所有基于 Java 21+ 的后端项目（含 Spring Boot 4.0+）
 
@@ -76,7 +76,7 @@ paths:
 | 布尔方法 | `is` / `has` / `can` / `should` 前缀 | `isExpired`, `hasAccess` |
 | 变量 / 字段 | camelCase | `userName`, `createdAt` |
 | 常量（`static final`） | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT`, `DEFAULT_PAGE_SIZE` |
-| 包 | 全小写，不缩写 | `com.example.demo.domain.user` |
+| 包 | 全小写，不缩写 | `com.example.{project}.domain.user` |
 | Record 组件 | camelCase（与字段一致） | `record User(Long id, String name)` |
 | 测试方法 | `test{Action}{Entity}[{Condition}]` | `testCreateUserWithValidationError` |
 
@@ -467,7 +467,7 @@ JSpecify 注解本身不产生检查（javac 不消费注解），需静态分�
 
 切忌反向操作——先全局启用再逐包豁免，豁免清单只增不减。关键开关：`NullAway:AnnotatedPackages` 限定检查范围、`NullAway:JSpecifyMode=true` 按 `@NullMarked` 语义推断非空默认；`-XepDisableAllChecks` 关闭 Error Prone 其余检查、聚焦空值。
 
-**Maven 集成实测要点（Error Prone 2.36.0 + NullAway 0.12.7 / JDK 21，主线仓库已验证）：**
+**Maven 集成实测要点（Error Prone 2.36.0 + NullAway 0.12.7 / JDK 21，已验证仓库的实测结论）：**
 
 - Error Prone 挂到 `maven-compiler-plugin` 的 `-Xplugin:ErrorProne`；需同时加 `-XDcompilePolicy=simple --should-stop=ifError=FLOW`，否则与 javac 默认编译策略冲突
 - JDK 16+ 强封装（JEP 396）：javac 内部包的 `--add-exports` 必须写在 `.mvn/jvm.config`（in-process 编译运行在 Maven JVM 上）；放 `compilerArgs` 会被 `--release` 模式拒绝，`--add-opens` 编译期无效且致构建失败
@@ -574,7 +574,7 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
 **规则：**
 - 字段上的 `@Nullable` 等空值注解须经根目录 `lombok.config` 的 `lombok.copyableAnnotations` 复制到生成构造器的参数上——替换手写构造器前先创建 `lombok.config` 并确认该配置已覆盖所用注解，避免丢失参数级空值契约
-- Lombok 另提供 `lombok.addNullAnnotations = jspecify`（配置键自 lombok 1.18.12 存在，`jspecify` 内置值自 1.18.38 支持、为官方推荐值之一）：让生成代码（getter、构造器参数等）自动附加 JSpecify 空值标注。**收益与风险（行业核实）：** 收益真实——不启用时 `@Nullable` 字段的生成 getter 在 `@NullMarked` 包内被 NullAway 视为非空返回，静态分析漏报；风险同样真实——NullAway 官方对 Lombok 仅 best-effort 兼容（README：不特别推荐与 Lombok 搭配），已知坑有生成代码上 JSpecify 注解的 TYPE_USE 识别问题（NullAway #917）与 `@Builder` 支持有限（#321）。**选型：** Lombok ≥1.18.38 且生成代码确实向消费方暴露 `@Nullable` 契约 → 启用；Lombok 暴露面小 → 不启用是合理保守选择。**本项目未启用**——Lombok 仅限 application/infrastructure 层 Bean 类、可空契约暴露面小；启用与否变更须重新跑 NullAway 全量验证
+- Lombok 另提供 `lombok.addNullAnnotations = jspecify`（配置键自 lombok 1.18.12 存在，`jspecify` 内置值自 1.18.38 支持、为官方推荐值之一）：让生成代码（getter、构造器参数等）自动附加 JSpecify 空值标注。**收益与风险（行业核实）：** 收益真实——不启用时 `@Nullable` 字段的生成 getter 在 `@NullMarked` 包内被 NullAway 视为非空返回，静态分析漏报；风险同样真实——NullAway 官方对 Lombok 仅 best-effort 兼容（README：不特别推荐与 Lombok 搭配），已知坑有生成代码上 JSpecify 注解的 TYPE_USE 识别问题（NullAway #917）与 `@Builder` 支持有限（#321）。**选型：** Lombok ≥1.18.38 且生成代码确实向消费方暴露 `@Nullable` 契约 → 启用；Lombok 暴露面小 → 不启用是合理保守选择（典型如 Lombok 仅限 application/infrastructure 层 Bean 类的项目，`@NullMarked` 包内类型默认非空、可空契约已由 `copyableAnnotations` 复制路径覆盖）。启用与否变更须重新跑 NullAway 全量验证
 - Lombok 生成构造器**不受**其他手写构造器影响（与 `@Data` 隐含的构造器不同），手写与生成构造器只要签名不冲突即可共存——示例：带默认值的便利构造器（委托静态工厂计算默认依赖）手写成无参构造器，`@RequiredArgsConstructor` 同时生成全参构造器
 - 含实际逻辑的构造器（参数校验、防御性复制、默认值计算）仍需手写，不适用本条
 

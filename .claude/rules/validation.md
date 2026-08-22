@@ -4,7 +4,7 @@ paths:
 ---
 # 参数校验规范（声明式 + 命令式）
 
-**版本：** 1.6（2026-08-22 修订：同步主线规范——§2.8 补 `@DefaultValue` 五事实表（含「与 `@Valid` 正交」）与 `@ConstructorBinding` 按需标注、校验失败行为精确为 `BindValidationException` 包装链（Boot 4.1.0 字节码实证）；§4 注解来源表纠错（`@CheckForNull` 非 jakarta）已先行合入。§2.10 消息外化保留本仓库强制策略（主线已改按需启用，属项目级差异））
+**版本：** 1.7（2026-08-22 同步主线规范源：§2.10 统一为通用「按需启用」版（原强制策略改为项目选型，记录于项目 CLAUDE.md「规范适配」段）。此前 1.6：同步 §2.8 `@DefaultValue` 六事实表、`@ConstructorBinding` 按需标注、`BindValidationException` 包装链；§4 注解来源表纠错）
 
 **适用范围：** JDK 21 + Spring Boot 4.0 + Jakarta Validation 3.1
 
@@ -638,9 +638,11 @@ public void createUser(@Valid UserCreateDTO dto) { ... }
 
 > **全局异常处理：** Bean Validation 校验失败后的异常处理（`MethodArgumentNotValidException`、`ConstraintViolationException` 等 → HTTP 响应映射）完整规范见 `exception-handling.md` §6.2。
 
-### 2.10 错误消息外化管理
+### 2.10 错误消息外化管理（按需启用）
 
-注解的 `message` 支持三类占位符：注解属性名（`{min}`/`{max}`）、`{validatedValue}`（被拒值）、`${...}` EL 表达式。硬编码消息会耦合文案与代码、无法国际化，**注解里只写消息键**：
+> **按需启用：** 本节是引入 i18n / 消息外化需求时的规范——无国际化需求的项目（消息用本地化字面量）不强制消息键三段式；各项目的启用状态记录于项目 `CLAUDE.md`「规范适配」段。
+
+注解的 `message` 支持三类占位符：注解属性名（`{min}`/`{max}`）、`{validatedValue}`（被拒值）、`${...}` EL 表达式。硬编码消息会耦合文案与代码、无法国际化；启用外化后**注解里只写消息键**：
 
 ```java
 // GOOD — 消息键三段式：<域>.<字段>.<约束>
@@ -656,9 +658,9 @@ user.username.notBlank=用户名不能为空
 user.username.size=用户名长度不能超过 {max} 个字符
 ```
 
-**规则：**
+**规则（启用后）：**
 - 消息键用 `<域>.<字段>.<约束>` 三段式；对外 API 的错误定位依赖 `ApiResponse.errors[]` 的 `field` 与机器可读错误码（`api-conventions.md`），**不依赖消息文本**
-- 改造存量代码时，散落的中文字面量消息（NC-010）统一收敛到资源文件
+- 改造存量代码时，散落的本地化字面量消息（NC-010，见 `null-check-governance.md` §3）统一收敛到资源文件
 
 ### 2.11 校验行为调优
 

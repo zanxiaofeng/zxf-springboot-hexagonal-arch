@@ -1,9 +1,11 @@
 ---
 paths:
   - "**/infrastructure/adapter/in/**/*.java"
-  - "**/docs/**/*.md"
+  - "**/docs/design/**/*.md"
 ---
 # API Design Conventions
+
+**版本：** 1.2（2026-08-22 同步主线规范源：Error Response 统一为含 `errors[]` 标准结构并补结构一致性 callout；触发面收窄至 docs/design；项目选型记录迁至项目 CLAUDE.md「规范适配」段）
 
 > Controller、Request/Response DTO、WebMapper、ApiResponse、GlobalExceptionHandler 均位于入站适配器 `infrastructure/adapter/in/web/`（见 `architecture.md` §5.4）。
 
@@ -48,6 +50,8 @@ paths:
   ]
 }
 ```
+
+> **信封结构与 `exception-handling.md` §6.1、`contract-test.md` 保持一致**：字段级校验明细进 `errors[]` 数组（field/message，`rejectedValue` 对敏感字段脱敏为 `***`），`message` 只放汇总描述——禁止「明细拼 message」与「errors[] 数组」两种结构混用；存量代码若为旧变体，须全项目统一切换。
 
 ## Downstream Side Effects
 When an endpoint triggers a downstream call, document it in the API spec:
